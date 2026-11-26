@@ -1,4 +1,10 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEFAULT_SPOTS_PATH = str(
+    Path(__file__).resolve().parents[1] / "data" / "trento_study_spots.json"
+)
 
 
 class Settings(BaseSettings):
@@ -8,6 +14,11 @@ class Settings(BaseSettings):
     tt_api_username: str = ""
     tt_api_password: str = ""
     tt_api_requested_with: str = "it.tndigit.mit"
+    tt_trento_areas: str = "23,7,8"
     tt_trips_cache_ttl_seconds: int = 30
-    database_path: str = "/data/trento-transit.db"
+    database_path: str = "./data/radar.db"
     cache_stale_fallback: bool = True
+    checkin_rate_limit_seconds: int = 900
+    checkin_salt: str = "trento-radar-v1-salt"
+    study_spots_path: str = _DEFAULT_SPOTS_PATH
+    enable_scheduler: bool = True

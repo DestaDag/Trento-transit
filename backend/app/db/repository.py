@@ -219,6 +219,109 @@ class Repository:
             results.append((int(level), timestamp))
         return results
 
+    async def has_recent_checkin(
+        self, spot_id: str, client_hash: str, since: datetime
+    ) -> bool:
+        async with aiosqlite.connect(self.database_path) as db:
+            rows = await db.execute_fetchall(
+                """
+                SELECT 1 FROM occupancy_reports
+                WHERE spot_id = ? AND client_hash = ? AND created_at >= ?
+                LIMIT 1
+                """,
+                (spot_id, client_hash, since.isoformat()),
+            )
+            return len(rows) > 0
+
+    async def get_study_spot(self, spot_id: str) -> dict[str, Any] | None:
+        async with aiosqlite.connect(self.database_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await db.execute_fetchall(
+                "SELECT * FROM study_spots WHERE spot_id = ?", (spot_id,)
+            )
+            return dict(rows[0]) if rows else None
+
+    async def get_spot_stop_links(
+        self, spot_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        query = """
+            SELECT l.spot_id, l.walk_distance_m, l.walk_minutes,
+                   s.stop_id, s.stop_code, s.stop_name, s.stop_type,
+                   s.lat, s.lon, s.wheelchair_boarding, s.routes_json
+            FROM spot_stop_links l
+            JOIN transit_stops s ON s.stop_id = l.stop_id
+        """
+        params: tuple[Any, ...] = ()
+        if spot_id is not None:
+            query += " WHERE l.spot_id = ?"
+            params = (spot_id,)
+        query += " ORDER BY l.walk_distance_m ASC"
+        async with aiosqlite.connect(self.database_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await db.execute_fetchall(query, params)
+            return [dict(row) for row in rows]
+
+    async def find_stops_near(
+        self,
+        lat: float,
+        lon: float,
+        radius_m: float = 800.0,
+        accessible_only: bool = False,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        lat_delta = radius_m / 111_320.0
+        cos_lat = max(0.2, math.cos(math.radians(lat)))
+        lon_delta = radius_m / (111_320.0 * cos_lat)
+        async with aiosqlite.connect(self.database_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await db.execute_fetchall(
+                """
+                SELECT s.*
+                FROM transit_stops s
+                JOIN transit_stops_rtree r ON r.id = s.stop_id
+                WHERE r.min_lat >= ? AND r.max_lat <= ?
+                  AND r.min_lon >= ? AND r.max_lon <= ?
+                """,
+                (
+                    lat - lat_delta,
+                    lat + lat_delta,
+                    lon - lon_delta,
+                    lon + lon_delta,
+                ),
+            )
+        candidates: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            if accessible_only and int(item.get("wheelchair_boarding") or 0) <= 0:
+                continue
+            dist = haversine(lat, lon, item["lat"], item["lon"])
+            if dist <= radius_m:
+                item["walk_distance_m"] = round(dist, 1)
+                item["walk_minutes"] = round(dist / (4.8 * 1000 / 60), 1)
+                candidates.append(item)
+        candidates.sort(key=lambda s: s["walk_distance_m"])
+        return candidates[:limit]
+
+    async def get_stop(self, stop_id: str) -> dict[str, Any] | None:
+        async with aiosqlite.connect(self.database_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await db.execute_fetchall(
+                "SELECT * FROM transit_stops WHERE stop_id = ?", (stop_id,)
+            )
+            return dict(rows[0]) if rows else None
+
+    async def list_routes(self) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self.database_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await db.execute_fetchall("SELECT * FROM transit_routes")
+            return [dict(row) for row in rows]
+
+    async def counts(self) -> tuple[int, int]:
+        async with aiosqlite.connect(self.database_path) as db:
+            stops_row = await db.execute_fetchall("SELECT COUNT(*) FROM transit_stops")
+            spots_row = await db.execute_fetchall("SELECT COUNT(*) FROM study_spots")
+            return int(stops_row[0][0]), int(spots_row[0][0])
+
 
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     radius_m = 6_371_000.0

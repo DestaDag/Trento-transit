@@ -177,6 +177,19 @@ def normalize_trip(item: dict[str, Any]) -> dict[str, Any]:
     )
     delay = item.get("delay")
     last_event = item.get("lastEventRecivedAt")
+    stop_times_raw = item.get("stopTimes") or []
+    stop_times = []
+    for idx, st in enumerate(stop_times_raw):
+        if not isinstance(st, dict):
+            continue
+        stop_times.append({
+            "stop_id": str(st.get("stopId") or st.get("stop_id") or ""),
+            "stop_code": st.get("stopCode"),
+            "stop_name": st.get("stopName") or st.get("stop_name"),
+            "stop_sequence": int(st.get("stopSequence") or idx + 1),
+            "arrival_time": st.get("arrivalTime"),
+            "departure_time": st.get("departureTime"),
+        })
     return {
         "trip_id": str(item.get("tripId") or item.get("trip_id")),
         "route_id": str(item.get("routeId")) if item.get("routeId") is not None else None,
@@ -192,6 +205,7 @@ def normalize_trip(item: dict[str, Any]) -> dict[str, Any]:
         ),
         "matricola_bus": item.get("matricolaBus"),
         "stale": False,
+        "stop_times": stop_times,
     }
 
 
