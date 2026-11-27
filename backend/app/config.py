@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     tt_api_base_url: str = "https://app-tpl.tndigit.it/gtlservice"
-    tt_api_username: str = ""
-    tt_api_password: str = ""
+    tt_api_username: str = "mittmobile"
+    tt_api_password: str = "ecGsp.RHB3"
     tt_api_requested_with: str = "it.tndigit.mit"
     tt_trento_areas: str = "23,7,8"
     tt_trips_cache_ttl_seconds: int = 30
